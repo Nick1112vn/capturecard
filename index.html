@@ -20,21 +20,20 @@
 <p class="small warn">⚠️ Không khóa màn hình, chuyển ứng dụng hay đóng trang trong khi ghi/upload. Trình duyệt Android có thể dừng camera hoặc tiến trình nền. Chỉ hoạt động với capture card được trình duyệt nhận như camera UVC. Bản ghi 30 phút được giữ trong bộ nhớ trình duyệt trước khi upload nên cần đủ RAM, đặc biệt ở độ phân giải/bitrate cao. Không phải hệ thống ghi dự phòng chuyên dụng.</p></main>
 
 <script>
+
 'use strict';
+
 const $=id=>document.getElementById(id);
 
 const PERIOD=30*60*1000, PART=8*1024*1024;
 const MAX_UPLOAD_ATTEMPTS=3;
-const RETRY_DELAYS_MS=[5000,15000];
+const RETRY_DELAYS_MS=[5000,15000]; // nghỉ 5s, 15s trước lần 2 và 3
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
-// ===== Cấu hình 60fps =====
-const VIDEO_BPS=8_000_000;  // 720p60: 8 Mbps (tăng 12_000_000 nếu hình còn vỡ)
-const AUDIO_BPS=128_000;
-
 let stream=null,rec=null,parts=[],cycleStart=0,ticker=null,cutTimer=null,active=false,manualStop=false,sequence=0,queue=[],busy=false;
+
 let token=null,expiry=0,refreshToken=null;
-const SAMPLE_W=64,SAMPLE_H=36,SCAN_MS=5000,NO_SIGNAL_HOLD_MS=2000,SIGNAL_HOLD_MS=1500;
+const SAMPLE_W=64,SAMPLE_H=36,SCAN_MS=500,NO_SIGNAL_HOLD_MS=2000,SIGNAL_HOLD_MS=1500;
 const sampleCanvas=document.createElement('canvas');sampleCanvas.width=SAMPLE_W;sampleCanvas.height=SAMPLE_H;
 const sampleCtx=sampleCanvas.getContext('2d',{willReadFrequently:true});
 let noSignalSample=null, monitoringTimer=null, lastMatched=null,matchSince=0, recordingAllowed=true, armed=false, segmentStopping=false;
@@ -81,41 +80,60 @@ function scanSignal(){
 }
 function updateMonitor(){clearInterval(monitoringTimer);monitoringTimer=setInterval(scanSignal,SCAN_MS)}
 
+
 function status(s){$('status').textContent=s}function dbStatus(s){$('dropStatus').textContent=s}
+
 function err(e){return e?.message||String(e)}
-function url(){return location.origin+location.pathname}
+
+function url(){return location.origin+location.pathname} // exact redirect URL in Dropbox Console
+
 function key(){return $('appKey').value.trim()}
+
 function b64url(data){return btoa(String.fromCharCode(...new Uint8Array(data))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
 
-async function connect(){try{if(!key())throw Error('Nhập Dropbox App key.');if(!crypto.subtle)throw Error('Cần HTTPS để dùng OAuth PKCE.');const verifier=b64url(crypto.getRandomValues(new Uint8Array(32)));const challenge=b64url(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier)));sessionStorage.setItem('db_verifier',verifier);sessionStorage.setItem('db_key',key());const a=new URL('https://www.dropbox.com/oauth2/authorize');for(const [k,v] of Object.entries({client_id:key(),response_type:'code',token_access_type:'offline',scope:'files.content.write',redirect_uri:url(),code_challenge:challenge,code_challenge_method:'S256',state:verifier.slice(0,16)}))a.searchParams.set(k,v);location.assign(a.toString())}catch(e){dbStatus('Không thể kết nối: '+err(e))}}
+async function connect(){try{if(!key())throw Error('Nhập Dropbox App key.');if(!crypto.subtle)throw Error('Cần HTTPS để dùng OAuth PKCE.');const verifier=b64url(crypto.getRandomValues(new Uint8Array(32)));const challenge=b64url(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier)));sessionStorage.setItem('db_verifier',verifier);sessionStorage.setItem('db_key',key());const a=new URL('https\://www.dropbox.com/oauth2/authorize');for(const [k,v] of Object.entries({client_id:key(),response_type:'code',token_access_type:'offline',scope:'files.content.write',redirect_uri:url(),code_challenge:challenge,code_challenge_method:'S256',state:verifier.slice(0,16)}))a.searchParams.set(k,v);location.assign(a.toString())}catch(e){dbStatus('Không thể kết nối: '+err(e))}}
 
-async function exchange(p){const verifier=sessionStorage.getItem('db_verifier'),savedKey=sessionStorage.getItem('db_key');if(!verifier||!savedKey||p.get('state')!==verifier.slice(0,16))throw Error('Phiên xác thực không hợp lệ. Kết nối lại.');const body=new URLSearchParams({grant_type:'authorization_code',code:p.get('code'),client_id:savedKey,code_verifier:verifier,redirect_uri:url()});const r=await fetch('https://api.dropboxapi.com/oauth2/token',{method:'POST',body});const data=await r.json();if(!r.ok)throw Error(JSON.stringify(data));sessionStorage.removeItem('db_verifier');token=data.access_token;expiry=Date.now()+data.expires_in*1000;refreshToken=data.refresh_token||null;saveAuth();$('appKey').value=savedKey;dbStatus('✅ Dropbox đã kết nối. Sẵn sàng tự động upload.')}
+async function exchange(p){const verifier=sessionStorage.getItem('db_verifier'),savedKey=sessionStorage.getItem('db_key');if(!verifier||!savedKey||p.get('state')!==verifier.slice(0,16))throw Error('Phiên xác thực không hợp lệ. Kết nối lại.');const body=new URLSearchParams({grant_type:'authorization_code',code:p.get('code'),client_id:savedKey,code_verifier:verifier,redirect_uri:url()});const r=await fetch('https\://api.dropboxapi.com/oauth2/token',{method:'POST',body});const data=await r.json();if(!r.ok)throw Error(JSON.stringify(data));sessionStorage.removeItem('db_verifier');token=data.access_token;expiry=Date.now()+data.expires_in*1000;refreshToken=data.refresh_token||null;saveAuth();$('appKey').value=savedKey;dbStatus('✅ Dropbox đã kết nối. Sẵn sàng tự động upload.')}
 
 function saveAuth(){sessionStorage.setItem('db_auth',JSON.stringify({token,expiry,refreshToken,key:key()}))}
 
-async function access(){if(!token&&!refreshToken)throw Error('Chưa kết nối Dropbox.');if(token&&Date.now()<expiry-90000)return token;if(!refreshToken)throw Error('Phiên Dropbox đã hết hạn, kết nối lại.');const r=await fetch('https://api.dropboxapi.com/oauth2/token',{method:'POST',body:new URLSearchParams({grant_type:'refresh_token',refresh_token:refreshToken,client_id:key()})});const d=await r.json();if(!r.ok)throw Error('Không thể làm mới token: '+JSON.stringify(d));token=d.access_token;expiry=Date.now()+d.expires_in*1000;saveAuth();return token}
+async function access(){if(!token&&!refreshToken)throw Error('Chưa kết nối Dropbox.');if(token&&Date.now()<expiry-90000)return token;if(!refreshToken)throw Error('Phiên Dropbox đã hết hạn, kết nối lại.');const r=await fetch('https\://api.dropboxapi.com/oauth2/token',{method:'POST',body:new URLSearchParams({grant_type:'refresh_token',refresh_token:refreshToken,client_id:key()})});const d=await r.json();if(!r.ok)throw Error('Không thể làm mới token: '+JSON.stringify(d));token=d.access_token;expiry=Date.now()+d.expires_in*1000;saveAuth();return token}
 
-async function request(endpoint,arg,body){const r=await fetch('https://content.dropboxapi.com/2/'+endpoint,{method:'POST',headers:{Authorization:'Bearer '+await access(),'Dropbox-API-Arg':JSON.stringify(arg),'Content-Type':'application/octet-stream'},body});if(!r.ok)throw Error('Dropbox '+r.status+': '+(await r.text()).slice(0,350));const txt=await r.text();return txt?JSON.parse(txt):{}}
+async function request(endpoint,arg,body){const r=await fetch('https\://content.dropboxapi.com/2/'+endpoint,{method:'POST',headers:{Authorization:'Bearer '+await access(),'Dropbox-API-Arg':JSON.stringify(arg),'Content-Type':'application/octet-stream'},body});if(!r.ok)throw Error('Dropbox '+r.status+': '+(await r.text()).slice(0,350));const txt=await r.text();return txt?JSON.parse(txt):{}}
 
 async function upload(item){const file=item.blob, path='/capture-'+item.name;const chunksize=PART;let offset=0;item.info.textContent=`${item.name} — đang upload 0%`;
+
 if(file.size<=150*1024*1024){await request('files/upload',{path,mode:'add',autorename:true,mute:false},file);item.info.textContent=`✅ ${item.name} — đã upload (${(file.size/1048576).toFixed(1)} MB)`;return}
+
 let first=file.slice(0,Math.min(chunksize,file.size));const start=await request('files/upload_session/start',{close:false},first);const id=start.session_id;offset=first.size;
+
 while(file.size-offset>chunksize){const block=file.slice(offset,offset+chunksize);await request('files/upload_session/append_v2',{cursor:{session_id:id,offset},close:false},block);offset+=block.size;item.info.textContent=`${item.name} — đang upload ${Math.floor(100*offset/file.size)}% `}
+
 await request('files/upload_session/finish',{cursor:{session_id:id,offset},commit:{path,mode:'add',autorename:true,mute:false}},file.slice(offset));item.info.textContent=`✅ ${item.name} — đã upload (${(file.size/1048576).toFixed(1)} MB) `}
 
 function releaseVideo(item){
   if(!item.blob)return;
   URL.revokeObjectURL(item.localUrl);
-  item.localUrl=null;item.blob=null;
-  item.download.removeAttribute('href');item.download.hidden=true;
-  item.confirm.hidden=true;item.retry.hidden=true;item.released=true;
+  item.localUrl=null;
+  item.blob=null;
+  item.download.removeAttribute('href');
+  item.download.hidden=true;
+  item.confirm.hidden=true;
+  item.retry.hidden=true;
+  item.released=true;
 }
 
 function autoSaveToDevice(item){
+  // Việc nhấn download bằng JavaScript có thể bị Android/iOS và các trình duyệt chặn
+  // khi không bắt nguồn từ thao tác trực tiếp của người dùng.
   try{
     const temp=document.createElement('a');
-    temp.href=item.localUrl;temp.download='capture-'+item.name;temp.style.display='none';
-    document.body.appendChild(temp);temp.click();temp.remove();
+    temp.href=item.localUrl;
+    temp.download='capture-'+item.name;
+    temp.style.display='none';
+    document.body.appendChild(temp);
+    temp.click();
+    temp.remove();
     item.info.textContent=`⚠️ ${item.name} — Dropbox thất bại sau ${MAX_UPLOAD_ATTEMPTS} lần. Đã yêu cầu trình duyệt tải file xuống. HÃY KIỂM TRA thư mục Downloads; nếu không có, bấm nút ⬇ Lưu trên điện thoại. `;
     dbStatus('⚠️ Upload thất bại. Đã thử tự tải về, nhưng trình duyệt có thể chặn. Hãy kiểm tra Downloads và bấm tải thủ công nếu cần.');
   }catch(e){
@@ -132,23 +150,29 @@ function addFile(blob,mimeType){
   li.append(info);
   const a=document.createElement('a');
   const localUrl=URL.createObjectURL(blob);
-  a.href=localUrl;a.download='capture-'+name;a.textContent='⬇ Lưu trên điện thoại';
+  a.href=localUrl;
+  a.download='capture-'+name;
+  a.textContent='⬇ Lưu trên điện thoại';
   li.append(a);
   const confirm=document.createElement('button');
-  confirm.textContent='✓ Đã lưu — giải phóng RAM';confirm.style.marginLeft='8px';confirm.hidden=true;
+  confirm.textContent='✓ Đã lưu — giải phóng RAM';
+  confirm.style.marginLeft='8px';
+  confirm.hidden=true;
   li.append(confirm);
   const retry=document.createElement('button');
-  retry.textContent='Thử upload lại';retry.style.marginLeft='8px';retry.hidden=true;
+  retry.textContent='Thử upload lại';
+  retry.style.marginLeft='8px';
+  retry.hidden=true;
   li.append(retry);
   $('files').prepend(li);
   const item={blob,name,line:li,info,retry,download:a,confirm,localUrl,queued:true,released:false};
   confirm.onclick=()=>{
-    if(item.queued||item.released)return;
+    if(item.queued || item.released)return;
     if(!window.confirm('Bạn đã kiểm tra file video nằm trong Downloads và mở được chưa? Sau khi giải phóng RAM, không thể tải lại file này từ trang web.'))return;
     releaseVideo(item);
     item.info.textContent=`✅ ${item.name} — đã xác nhận lưu vào máy; dữ liệu video đã được giải phóng. `;
   };
-  retry.onclick=()=>{if(item.queued||item.released)return;item.queued=true;retry.hidden=true;queue.push(item);processQueue()};
+  retry.onclick=()=>{if(item.queued || item.released)return;item.queued=true;retry.hidden=true;queue.push(item);processQueue()};
   queue.push(item);
   processQueue();
 }
@@ -169,8 +193,10 @@ async function processQueue(){
         try{
           item.info.textContent=`${item.name} — upload lần ${attempt}/${MAX_UPLOAD_ATTEMPTS}... `;
           await upload(item);
-          uploaded=true;item.retry.hidden=true;releaseVideo(item);
-          item.info.textContent+=' • Đã giải phóng dữ liệu video khỏi RAM.';
+          uploaded=true;
+          item.retry.hidden=true;
+          releaseVideo(item);
+          item.info.textContent+= ' • Đã giải phóng dữ liệu video khỏi RAM.';
           break;
         }catch(e){
           lastError=e;
@@ -179,7 +205,8 @@ async function processQueue(){
       }
       item.queued=false;
       if(!uploaded){
-        item.retry.hidden=false;item.confirm.hidden=false;
+        item.retry.hidden=false;
+        item.confirm.hidden=false;
         autoSaveToDevice(item);
         console.error('Dropbox upload failed after automatic retries:',item.name,lastError);
       }
@@ -188,33 +215,28 @@ async function processQueue(){
 }
 
 function showDevices(devices){const prev=$('camera').value;$('camera').replaceChildren(new Option('Camera mặc định',''));for(const [i,d] of devices.filter(x=>x.kind==='videoinput').entries())$('camera').add(new Option(d.label||'Camera '+(i+1),d.deviceId));if([...$('camera').options].some(x=>x.value===prev))$('camera').value=prev}
+
 async function refresh(){try{showDevices(await navigator.mediaDevices.enumerateDevices())}catch(e){status(err(e))}}
 
-// mime(): ưu tiên H.264 High/Main Level 4.x (đủ cho 720p60) thay vì Baseline L3.0
-function mime(){return [
-  'video/mp4;codecs=avc1.640028,mp4a.40.2',
-  'video/mp4;codecs=avc1.4D4028,mp4a.40.2',
-  'video/mp4',
-  'video/webm;codecs=vp8,opus',
-  'video/webm;codecs=vp8',
-  'video/webm'
-].find(x=>MediaRecorder.isTypeSupported(x))||''}
+async function openCamera(){try{if(active)return;if(!navigator.mediaDevices?.getUserMedia)throw Error('Trang phải mở bằng HTTPS và trình duyệt hỗ trợ camera.');stream?.getTracks().forEach(t=>t.stop());const selected=$('camera').value;stream=await navigator.mediaDevices.getUserMedia({audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+    },video: {
+    ...(selected ? {deviceId:{exact:selected}} : {}),
+    width: {exact:1280},
+    height: {exact:720},
+    frameRate: {exact:60}
+}});$('preview').srcObject=stream;await $('preview').play();$('recordBtn').disabled=false;$('captureNoSignal').disabled=false;await refresh();updateMonitor();status('Camera đã sẵn sàng. Hãy chụp frame No Signal để bật chế độ tự động.');stream.getVideoTracks()[0]?.addEventListener('ended',()=>{clearInterval(monitoringTimer);if(active)stop();status('Capture card bị ngắt kết nối.')})}catch(e){status('Lỗi mở camera: '+err(e))}}
 
-async function openCamera(){try{if(active)return;if(!navigator.mediaDevices?.getUserMedia)throw Error('Trang phải mở bằng HTTPS và trình duyệt hỗ trợ camera.');stream?.getTracks().forEach(t=>t.stop());const selected=$('camera').value;stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:{...(selected?{deviceId:{exact:selected}}:{}),width:{exact:1280},height:{exact:720},frameRate:{exact:60}}});$('preview').srcObject=stream;await $('preview').play();$('recordBtn').disabled=false;$('captureNoSignal').disabled=false;await refresh();updateMonitor();
-const s=stream.getVideoTracks()[0]?.getSettings()||{};console.log('Camera settings:',s);
-status(`Camera sẵn sàng: ${s.width}x${s.height} @ ${s.frameRate}fps • codec: ${mime()||'mặc định'}. Hãy chụp frame No Signal để bật chế độ tự động.`);
-stream.getVideoTracks()[0]?.addEventListener('ended',()=>{clearInterval(monitoringTimer);if(active)stop();status('Capture card bị ngắt kết nối.')})}catch(e){status('Lỗi mở camera: '+err(e))}}
+function mime(){return ['video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp8,opus','video/webm;codecs=vp8','video/webm'].find(x=>MediaRecorder.isTypeSupported(x))||''}
 
-function controls(){$('recordBtn').disabled=active||!stream;$('stopBtn').disabled=!active;$('previewBtn').disabled=active;$('refresh').disabled=active;$('camera').disabled=active;$('captureNoSignal').disabled=!stream?.active}
+function controls(){ $('recordBtn').disabled=active||!stream;$('stopBtn').disabled=!active;$('previewBtn').disabled=active;$('refresh').disabled=active;$('camera').disabled=active;$('captureNoSignal').disabled=!stream?.active }
 
 function makeRecorder(){
   if(!active||segmentStopping||!stream?.active||!recordingAllowed)return;
   const type=mime();parts=[];
-  const current=new MediaRecorder(stream,{
-    ...(type?{mimeType:type}:{}),
-    videoBitsPerSecond:VIDEO_BPS,
-    audioBitsPerSecond:AUDIO_BPS
-  });
+  const current=new MediaRecorder(stream,type?{mimeType:type}:undefined);
   rec=current;cycleStart=Date.now();
   current.ondataavailable=e=>{if(e.data.size)parts.push(e.data)};
   current.onerror=e=>{status('Lỗi ghi: '+err(e.error||e));stop()};
@@ -224,7 +246,7 @@ function makeRecorder(){
     parts=[];segmentStopping=false;rec=null;
     if(active&&!manualStop&&stream?.active){
       if(recordingAllowed){try{makeRecorder();status('● Đang ghi đoạn kế tiếp.')}catch(e){active=false;controls();status('Không thể tiếp tục ghi: '+err(e))}}
-      else{cycleStart=Date.now();$('timer').textContent='00:00';status('⏸ Đang chờ tín hiệu HDMI khác frame No Signal.')}}
+      else {cycleStart=Date.now();$('timer').textContent='00:00';status('⏸ Đang chờ tín hiệu HDMI khác frame No Signal.')}}
     else{active=false;armed=false;controls();clearInterval(ticker);status('Đã dừng. Đoạn cuối đã được đưa vào hàng đợi upload.')}
   };
   current.start(1000);
@@ -236,6 +258,7 @@ function start(){
     if(!window.MediaRecorder)throw Error('Không hỗ trợ MediaRecorder.');
     if(!token&&!refreshToken)throw Error('Hãy kết nối Dropbox trước khi ghi.');
     manualStop=false;active=true;armed=$('autoMode').checked&&!!noSignalSample;
+    // Không được ghi vào đoạn No Signal ngay từ đầu.
     const snap=noSignalSample?snapshot():null;
     const isNoSignal=armed&&snap&&matchFrame(noSignalSample,snap);
     recordingAllowed=!isNoSignal;
@@ -257,7 +280,8 @@ $('autoMode').onchange=()=>{armed=active&&$('autoMode').checked&&!!noSignalSampl
 $('sensitivity').oninput=()=>{$('sensitivityValue').textContent=$('sensitivity').value};
 $('compareMode').onchange=()=>{$('toleranceOptions').hidden=$('compareMode').value!=='tolerant';lastMatched=null;matchSince=0;setSignalStatus('Đã chuyển chế độ so sánh: '+($('compareMode').value==='exact'?'Tuyệt đối 100%.':'Có dung sai.'))};
 
-$('connect').onclick=connect;$('disconnect').onclick=()=>{token=null;refreshToken=null;expiry=0;sessionStorage.removeItem('db_auth');dbStatus('Đã ngắt kết nối Dropbox.')};$('refresh').onclick=refresh;$('previewBtn').onclick=openCamera;$('recordBtn').onclick=start;$('stopBtn').onclick=stop;
+$('connect').onclick=connect;$('disconnect').onclick=()=>{token=null;refreshToken=null;expiry=0;sessionStorage.removeItem('db_auth');dbStatus('Đã ngắt kết nối Dropbox.');};$('refresh').onclick=refresh;$('previewBtn').onclick=openCamera;$('recordBtn').onclick=start;$('stopBtn').onclick=stop;
 
 (async()=>{try{const saved=JSON.parse(sessionStorage.getItem('db_auth')||'null');if(saved){({token,expiry,refreshToken}=saved);$('appKey').value=saved.key||'';dbStatus('✅ Phiên Dropbox đã kết nối trong tab này.')}const qs=new URLSearchParams(location.search);if(qs.has('error'))throw Error('Dropbox: '+qs.get('error_description'));if(qs.has('code')){history.replaceState({},'',url());await exchange(qs)}else if(!saved?.key){$('appKey').value=sessionStorage.getItem('db_key')||''}}catch(e){dbStatus('Lỗi xác thực: '+err(e));history.replaceState({},'',url())}if(navigator.mediaDevices?.addEventListener)navigator.mediaDevices.addEventListener('devicechange',refresh);if(navigator.mediaDevices?.enumerateDevices)refresh()})();
+
 </script></body></html>
