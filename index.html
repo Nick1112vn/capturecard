@@ -33,7 +33,7 @@ const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 let stream=null,rec=null,parts=[],cycleStart=0,ticker=null,cutTimer=null,active=false,manualStop=false,sequence=0,queue=[],busy=false;
 
 let token=null,expiry=0,refreshToken=null;
-const SAMPLE_W=64,SAMPLE_H=36,SCAN_MS=500,NO_SIGNAL_HOLD_MS=2000,SIGNAL_HOLD_MS=1500;
+const SAMPLE_W=64,SAMPLE_H=36,SCAN_MS=5000,NO_SIGNAL_HOLD_MS=2000,SIGNAL_HOLD_MS=1500;
 const sampleCanvas=document.createElement('canvas');sampleCanvas.width=SAMPLE_W;sampleCanvas.height=SAMPLE_H;
 const sampleCtx=sampleCanvas.getContext('2d',{willReadFrequently:true});
 let noSignalSample=null, monitoringTimer=null, lastMatched=null,matchSince=0, recordingAllowed=true, armed=false, segmentStopping=false;
@@ -218,7 +218,11 @@ function showDevices(devices){const prev=$('camera').value;$('camera').replaceCh
 
 async function refresh(){try{showDevices(await navigator.mediaDevices.enumerateDevices())}catch(e){status(err(e))}}
 
-async function openCamera(){try{if(active)return;if(!navigator.mediaDevices?.getUserMedia)throw Error('Trang phải mở bằng HTTPS và trình duyệt hỗ trợ camera.');stream?.getTracks().forEach(t=>t.stop());const selected=$('camera').value;stream=await navigator.mediaDevices.getUserMedia({audio:false,video: {
+async function openCamera(){try{if(active)return;if(!navigator.mediaDevices?.getUserMedia)throw Error('Trang phải mở bằng HTTPS và trình duyệt hỗ trợ camera.');stream?.getTracks().forEach(t=>t.stop());const selected=$('camera').value;stream=await navigator.mediaDevices.getUserMedia({audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+    },video: {
     ...(selected ? {deviceId:{exact:selected}} : {}),
     width: {exact:1280},
     height: {exact:720},
