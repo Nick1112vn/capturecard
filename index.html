@@ -222,7 +222,7 @@ async function openCamera(){try{if(active)return;if(!navigator.mediaDevices?.get
     ...(selected ? {deviceId:{exact:selected}} : {}),
     width: {exact:1280},
     height: {exact:720},
-    frameRate: {exact:60}
+    frameRate: {ideal:60}
 }});$('preview').srcObject=stream;await $('preview').play();$('recordBtn').disabled=false;$('captureNoSignal').disabled=false;await refresh();updateMonitor();status('Camera đã sẵn sàng. Hãy chụp frame No Signal để bật chế độ tự động.');stream.getVideoTracks()[0]?.addEventListener('ended',()=>{clearInterval(monitoringTimer);if(active)stop();status('Capture card bị ngắt kết nối.')})}catch(e){status('Lỗi mở camera: '+err(e))}}
 
 function mime(){return ['video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp8,opus','video/webm;codecs=vp8','video/webm'].find(x=>MediaRecorder.isTypeSupported(x))||''}
