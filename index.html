@@ -180,15 +180,15 @@ function key(){return $('appKey').value.trim()}
 
 
 
-function b64url(data){return btoa(String.fromCharCode(...new Uint8Array(data))).replace(/**\+**/g,'-').replace(/**\/**/g,'_').replace(/=+$/,'')}
+function b64url(data){return btoa(String.fromCharCode(...new Uint8Array(data))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
 
 
 
-async function connect(){try{if(!key())throw Error('Nhập Dropbox App key.');if(!crypto.subtle)throw Error('Cần HTTPS để dùng OAuth PKCE.');const verifier=b64url(crypto.getRandomValues(new Uint8Array(32)));const challenge=b64url(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier)));sessionStorage.setItem('db_verifier',verifier);sessionStorage.setItem('db_key',key());const a=new URL('https\\://www.dropbox.com/oauth2/authorize');for(const [k,v] of Object.entries({client_id:key(),response_type:'code',token_access_type:'offline',scope:'files.content.write',redirect_uri:url(),code_challenge:challenge,code_challenge_method:'S256',state:verifier.slice(0,16)}))a.searchParams.set(k,v);location.assign(a.toString())}catch(e){dbStatus('Không thể kết nối: '+err(e))}}
+async function connect(){try{if(!key())throw Error('Nhập Dropbox App key.');if(!crypto.subtle)throw Error('Cần HTTPS để dùng OAuth PKCE.');const verifier=b64url(crypto.getRandomValues(new Uint8Array(32)));const challenge=b64url(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier)));sessionStorage.setItem('db_verifier',verifier);sessionStorage.setItem('db_key',key());const a=new URL('https://www.dropbox.com/oauth2/authorize');for(const [k,v] of Object.entries({client_id:key(),response_type:'code',token_access_type:'offline',scope:'files.content.write',redirect_uri:url(),code_challenge:challenge,code_challenge_method:'S256',state:verifier.slice(0,16)}))a.searchParams.set(k,v);location.assign(a.toString())}catch(e){dbStatus('Không thể kết nối: '+err(e))}}
 
 
 
-async function exchange(p){const verifier=sessionStorage.getItem('db_verifier'),savedKey=sessionStorage.getItem('db_key');if(!verifier||!savedKey||p.get('state')!==verifier.slice(0,16))throw Error('Phiên xác thực không hợp lệ. Kết nối lại.');const body=new URLSearchParams({grant_type:'authorization_code',code:p.get('code'),client_id:savedKey,code_verifier:verifier,redirect_uri:url()});const r=await fetch('https\\://api.dropboxapi.com/oauth2/token',{method:'POST',body});const data=await r.json();if(!r.ok)throw Error(JSON.stringify(data));sessionStorage.removeItem('db_verifier');token=data.access_token;expiry=Date.now()+data.expires_in*1000;refreshToken=data.refresh_token||null;saveAuth();$('appKey').value=savedKey;dbStatus('✅ Dropbox đã kết nối. Sẵn sàng tự động upload.')}
+async function exchange(p){const verifier=sessionStorage.getItem('db_verifier'),savedKey=sessionStorage.getItem('db_key');if(!verifier||!savedKey||p.get('state')!==verifier.slice(0,16))throw Error('Phiên xác thực không hợp lệ. Kết nối lại.');const body=new URLSearchParams({grant_type:'authorization_code',code:p.get('code'),client_id:savedKey,code_verifier:verifier,redirect_uri:url()});const r=await fetch('https://api.dropboxapi.com/oauth2/token',{method:'POST',body});const data=await r.json();if(!r.ok)throw Error(JSON.stringify(data));sessionStorage.removeItem('db_verifier');token=data.access_token;expiry=Date.now()+data.expires_in*1000;refreshToken=data.refresh_token||null;saveAuth();$('appKey').value=savedKey;dbStatus('✅ Dropbox đã kết nối. Sẵn sàng tự động upload.')}
 
 
 
@@ -196,11 +196,11 @@ function saveAuth(){sessionStorage.setItem('db_auth',JSON.stringify({token,expir
 
 
 
-async function access(){if(!token&&!refreshToken)throw Error('Chưa kết nối Dropbox.');if(token&&Date.now()<expiry-90000)return token;if(!refreshToken)throw Error('Phiên Dropbox đã hết hạn, kết nối lại.');const r=await fetch('https\\://api.dropboxapi.com/oauth2/token',{method:'POST',body:new URLSearchParams({grant_type:'refresh_token',refresh_token:refreshToken,client_id:key()})});const d=await r.json();if(!r.ok)throw Error('Không thể làm mới token: '+JSON.stringify(d));token=d.access_token;expiry=Date.now()+d.expires_in*1000;saveAuth();return token}
+async function access(){if(!token&&!refreshToken)throw Error('Chưa kết nối Dropbox.');if(token&&Date.now()<expiry-90000)return token;if(!refreshToken)throw Error('Phiên Dropbox đã hết hạn, kết nối lại.');const r=await fetch('https://api.dropboxapi.com/oauth2/token',{method:'POST',body:new URLSearchParams({grant_type:'refresh_token',refresh_token:refreshToken,client_id:key()})});const d=await r.json();if(!r.ok)throw Error('Không thể làm mới token: '+JSON.stringify(d));token=d.access_token;expiry=Date.now()+d.expires_in*1000;saveAuth();return token}
 
 
 
-async function request(endpoint,arg,body){const r=await fetch('https\\://content.dropboxapi.com/2/'+endpoint,{method:'POST',headers:{Authorization:'Bearer '+await access(),'Dropbox-API-Arg':JSON.stringify(arg),'Content-Type':'application/octet-stream'},body});if(!r.ok)throw Error('Dropbox '+r.status+': '+(await r.text()).slice(0,350));const txt=await r.text();return txt?JSON.parse(txt):{}}
+async function request(endpoint,arg,body){const r=await fetch('https://content.dropboxapi.com/2/'+endpoint,{method:'POST',headers:{Authorization:'Bearer '+await access(),'Dropbox-API-Arg':JSON.stringify(arg),'Content-Type':'application/octet-stream'},body});if(!r.ok)throw Error('Dropbox '+r.status+': '+(await r.text()).slice(0,350));const txt=await r.text();return txt?JSON.parse(txt):{}}
 
 
 
