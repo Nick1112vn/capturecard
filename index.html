@@ -598,7 +598,7 @@ function makeRecorder(){
 
   const current = new MediaRecorder(stream, {
     ...(type ? { mimeType: type } : {}),
-    videoBitsPerSecond: 25_000_000,
+    videoBitsPerSecond: 60_000_000,
     audioBitsPerSecond: 128_000
 });
 
