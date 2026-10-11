@@ -459,7 +459,14 @@ async function openCamera(){try{if(active)return;if(!navigator.mediaDevices?.get
 
 
 
-function mime(){return ['video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp8,opus','video/webm;codecs=vp8','video/webm'].find(x=>MediaRecorder.isTypeSupported(x))||''}
+function mime() {
+    return [
+        'video/mp4;codecs=avc1.64001F',
+        'video/mp4;codecs=avc1.4D001F',
+        'video/mp4;codecs=avc1.42E01F',
+        'video/mp4'
+    ].find(x => MediaRecorder.isTypeSupported(x)) || '';
+}
 
 
 
@@ -598,7 +605,7 @@ function makeRecorder(){
 
   const current = new MediaRecorder(stream, {
     ...(type ? { mimeType: type } : {}),
-    videoBitsPerSecond: 60_000_000,
+    videoBitsPerSecond: 10_000_000,
     audioBitsPerSecond: 128_000
 });
 
