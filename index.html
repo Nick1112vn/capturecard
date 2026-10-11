@@ -598,7 +598,7 @@ function makeRecorder(){
 
   const current = new MediaRecorder(stream, {
     ...(type ? { mimeType: type } : {}),
-    videoBitsPerSecond: 10_000_000,
+    videoBitsPerSecond: 8_000_000,
     audioBitsPerSecond: 128_000
 });
 
@@ -626,7 +626,7 @@ function makeRecorder(){
 
   };
 
-  current.start();
+  current.start(30000);
 
   cutTimer=setTimeout(()=>{if(current.state==='recording'){segmentStopping=true;current.stop()}},PERIOD);
 
