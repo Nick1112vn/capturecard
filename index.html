@@ -30,7 +30,7 @@
 
 
 
-<div class="panel"><h2>2. Ghi hình</h2><label for="camera">Nguồn video</label><select id="camera"><option value="">Camera mặc định</option></select><label for="audioDevice">Nguồn âm thanh</label><select id="audioDevice"><option value="">Không ghi âm thanh (mặc định)</option></select><p class="small muted">Chọn đúng audio input của UGREEN nếu muốn ghi tiếng HDMI. Không chọn microphone điện thoại/máy tính. Chọn nguồn âm thanh trước khi mở camera.</p><div class="grid"><button id="refresh">↻ Tìm thiết bị</button><button id="previewBtn" class="primary">▶ Mở camera</button></div><div class="screen"><video id="preview" autoplay muted playsinline></video></div><div class="panel" style="background:#101c30">
+<div class="panel"><h2>2. Ghi hình</h2><label for="camera">Nguồn video</label><select id="camera"><option value="">Camera mặc định</option></select><div class="grid"><button id="refresh">↻ Tìm thiết bị</button><button id="previewBtn" class="primary">▶ Mở camera</button></div><div class="screen"><video id="preview" autoplay muted playsinline></video></div><div class="panel" style="background:#101c30">
 
 
 
@@ -899,57 +899,65 @@ async function processQueue(){
 
 
 
-function showDevices(devices){
-  const camera=$('camera'), audio=$('audioDevice');
-  const oldCam=camera.value,oldAudio=audio.value;
-  camera.replaceChildren(new Option('Camera mặc định',''));
-  for(const [i,d] of devices.filter(x=>x.kind==='videoinput').entries())
-    camera.add(new Option(d.label||'Camera '+(i+1),d.deviceId));
-  if([...camera.options].some(x=>x.value===oldCam))camera.value=oldCam;
-  audio.replaceChildren(new Option('Không ghi âm thanh (mặc định)',''));
-  for(const [i,d] of devices.filter(x=>x.kind==='audioinput').entries())
-    audio.add(new Option(d.label||'Microphone / Audio input '+(i+1),d.deviceId));
-  if([...audio.options].some(x=>x.value===oldAudio))audio.value=oldAudio;
-}
+function showDevices(devices){const prev=$('camera').value;$('camera').replaceChildren(new Option('Camera mặc định',''));for(const [i,d] of devices.filter(x=>x.kind==='videoinput').entries())$('camera').add(new Option(d.label||'Camera '+(i+1),d.deviceId));if([...$('camera').options].some(x=>x.value===prev))$('camera').value=prev}
 
-async function refresh(){
-  try{showDevices(await navigator.mediaDevices.enumerateDevices())}
-  catch(e){status('Không tìm được thiết bị: '+err(e))}
-}
 
-async function openCamera(){
-  try{
-    if(active)return;
-    if(!navigator.mediaDevices?.getUserMedia)throw Error('Trang phải mở bằng HTTPS và trình duyệt hỗ trợ camera.');
-    stream?.getTracks().forEach(t=>t.stop());
-    const selected=$('camera').value;
-    const selectedAudioId=$('audioDevice').value;
-    // Tuyệt đối không tự chọn microphone mặc định.
-    const audioConstraints=selectedAudioId?{
-      deviceId:{exact:selectedAudioId},
-      echoCancellation:false,
-      noiseSuppression:false,
-      autoGainControl:false
-    }:false;
-    stream=await navigator.mediaDevices.getUserMedia({
-      audio:audioConstraints,
-      video:{
-        ...(selected?{deviceId:{exact:selected}}:{}),
-        width:{ideal:1280},height:{ideal:720},frameRate:{ideal:60}
-      }
-    });
-    $('preview').srcObject=stream;
-    await $('preview').play();
-    $('recordBtn').disabled=false;
-    $('captureNoSignal').disabled=false;
-    await refresh();updateMonitor();
-    const a=stream.getAudioTracks()[0];
-    status('Camera đã sẵn sàng. Âm thanh: '+(a?(a.label||'thiết bị đã chọn'):'TẮT')+'. Hãy chụp frame No Signal để bật tự động.');
-    stream.getVideoTracks()[0]?.addEventListener('ended',()=>{
-      clearInterval(monitoringTimer);if(active)stop();status('Capture card bị ngắt kết nối.');
-    });
-  }catch(e){status('Lỗi mở camera: '+err(e)+(e?.constraint?' • Ràng buộc: '+e.constraint:''))}
-}
+
+
+
+
+
+async function refresh(){try{showDevices(await navigator.mediaDevices.enumerateDevices())}catch(e){status(err(e))}}
+
+
+
+
+
+
+
+async function openCamera(){try{if(active)return;if(!navigator.mediaDevices?.getUserMedia)throw Error('Trang phải mở bằng HTTPS và trình duyệt hỗ trợ camera.');stream?.getTracks().forEach(t=>t.stop());const selected=$('camera').value;stream=await navigator.mediaDevices.getUserMedia({audio: {
+
+
+
+        echoCancellation: false,
+
+
+
+        noiseSuppression: false,
+
+
+
+        autoGainControl: false
+
+
+
+    },video: {
+
+
+
+    ...(selected ? {deviceId:{exact:selected}} : {}),
+
+
+
+    width: {ideal:1280},
+
+
+
+    height: {ideal:720},
+
+
+
+    frameRate: {ideal:60}
+
+
+
+}});$('preview').srcObject=stream;await $('preview').play();$('recordBtn').disabled=false;$('captureNoSignal').disabled=false;await refresh();updateMonitor();status('Camera đã sẵn sàng. Hãy chụp frame No Signal để bật chế độ tự động.');stream.getVideoTracks()[0]?.addEventListener('ended',()=>{clearInterval(monitoringTimer);if(active)stop();status('Capture card bị ngắt kết nối.')})}catch(e){status('Lỗi mở camera: '+err(e)+(e?.constraint?' • Ràng buộc: '+e.constraint:''))}}
+
+
+
+
+
+
 
 function mime(){return ['video/mp4;codecs=avc1.64002a'].find(x=>MediaRecorder.isTypeSupported(x))||''}
 
@@ -959,7 +967,7 @@ function mime(){return ['video/mp4;codecs=avc1.64002a'].find(x=>MediaRecorder.is
 
 
 
-function controls(){ $('recordBtn').disabled=active||!stream;$('stopBtn').disabled=!active;$('previewBtn').disabled=active;$('refresh').disabled=active;$('camera').disabled=active;$('audioDevice').disabled=active;$('captureNoSignal').disabled=!stream?.active }
+function controls(){ $('recordBtn').disabled=active||!stream;$('stopBtn').disabled=!active;$('previewBtn').disabled=active;$('refresh').disabled=active;$('camera').disabled=active;$('captureNoSignal').disabled=!stream?.active }
 
 
 
