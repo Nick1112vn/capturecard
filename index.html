@@ -453,13 +453,13 @@ async function openCamera(){try{if(active)return;if(!navigator.mediaDevices?.get
 
     height: {exact:720},
 
-    frameRate: {exact:30}
+    frameRate: {exact:60}
 
 }});$('preview').srcObject=stream;await $('preview').play();$('recordBtn').disabled=false;$('captureNoSignal').disabled=false;await refresh();updateMonitor();status('Camera đã sẵn sàng. Hãy chụp frame No Signal để bật chế độ tự động.');stream.getVideoTracks()[0]?.addEventListener('ended',()=>{clearInterval(monitoringTimer);if(active)stop();status('Capture card bị ngắt kết nối.')})}catch(e){status('Lỗi mở camera: '+err(e))}}
 
 
 
-function mime(){return ['video/webm;codecs=vp9,opus'].find(x=>MediaRecorder.isTypeSupported(x))||''}
+function mime(){return ['video/mp4;codecs=hvc1.1.6.L93.B0'].find(x=>MediaRecorder.isTypeSupported(x))||''}
 
 
 
@@ -598,7 +598,7 @@ function makeRecorder(){
 
   const current = new MediaRecorder(stream, {
     ...(type ? { mimeType: type } : {}),
-    videoBitsPerSecond: 10_000_000,
+    videoBitsPerSecond: 8_000_000,
     audioBitsPerSecond: 128_000
 });
 
